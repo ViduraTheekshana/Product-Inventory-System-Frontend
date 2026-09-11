@@ -80,5 +80,5 @@ export function bulkUpdatePriceAndStock(request: BulkPriceStockUpdateRequest): P
 
 // Matches DELETE /api/v1/products/bulk.
 export function bulkDeleteProducts(request: BulkDeleteRequest): Promise<void> {
-  return apiClient.delete<void>("/api/v1/products/bulk");
+  return apiClient.delete<void>("/api/v1/products/bulk", request);
 } 
