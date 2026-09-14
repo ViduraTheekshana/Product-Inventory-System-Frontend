@@ -35,13 +35,11 @@ export function useProducts() {
 
   const { showToast } = useToast();
 
-  // useCallback keeps this function's identity stable between renders,
-  // unless one of its dependencies actually changes. Without it, a new
-  // fetchProducts function would be created on every single render,
-  // which would make the useEffect below re-run constantly, even when
-  // nothing relevant actually changed.
-  const fetchProducts = useCallback(async () => {
-    setLoading(true);
+  // `silent` skips the loading spinner entirely - used specifically
+  // after a mutation, where the table should update in place, not
+  // flash to a full loading state for something the user just did.
+  const fetchProducts = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     setError(null);
 
     try {
@@ -60,21 +58,14 @@ export function useProducts() {
     } catch (err) {
       setError(err as ApiError);
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }, [tab, page, sort, search, showToast]);
 
-  // Re-fetches automatically whenever any of these values change - a
-  // page click, a tab switch, a new search term, or a new sort all
-  // trigger exactly this one effect, never scattered fetch calls
-  // sprinkled through the component that uses this hook.
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
 
-  // Whenever the search term or sort changes, jump back to page 0. Without
-  // this, staying on page 3 while switching to a search with only one
-  // page of results would silently show an empty page.
   useEffect(() => {
     setPage(0);
   }, [search, sort]);
@@ -97,49 +88,55 @@ export function useProducts() {
     setSelectedIds(new Set());
   }
 
+  // Every mutation below follows the same corrected order: perform the
+  // change, silently refresh the real data, THEN announce success -
+  // never claim success before the visible table actually agrees.
   async function create(request: CreateProductRequest) {
     await createProduct(request);
+    await fetchProducts({ silent: true });
     showToast({ type: "success", title: "Product created", duration: 3000 });
-    await fetchProducts();
   }
 
   async function editPriceAndStock(id: number, request: UpdateStockPriceRequest) {
     await updatePriceAndStock(id, request);
+    await fetchProducts({ silent: true });
     showToast({ type: "success", title: "Product updated", duration: 3000 });
-    await fetchProducts();
   }
 
   async function changeStatus(id: number, status: ProductStatus) {
     await updateStatus(id, { status });
+    await fetchProducts({ silent: true });
     showToast({ type: "success", title: "Status updated", duration: 3000 });
-    await fetchProducts();
   }
 
   async function remove(id: number) {
     await deleteProduct(id);
+    await fetchProducts({ silent: true });
     showToast({ type: "success", title: "Product deleted", duration: 3000 });
-    await fetchProducts();
   }
 
   async function bulkChangeStatus(status: ProductStatus) {
+    const count = selectedIds.size;
     await bulkUpdateStatus({ productIds: Array.from(selectedIds), status });
-    showToast({ type: "success", title: `${selectedIds.size} products updated`, duration: 3000 });
     clearSelection();
-    await fetchProducts();
+    await fetchProducts({ silent: true });
+    showToast({ type: "success", title: `${count} products updated`, duration: 3000 });
   }
 
   async function bulkEditPriceAndStock(request: { price?: number; stockQuantity?: number }) {
+    const count = selectedIds.size;
     await bulkUpdatePriceAndStock({ productIds: Array.from(selectedIds), ...request });
-    showToast({ type: "success", title: `${selectedIds.size} products updated`, duration: 3000 });
     clearSelection();
-    await fetchProducts();
+    await fetchProducts({ silent: true });
+    showToast({ type: "success", title: `${count} products updated`, duration: 3000 });
   }
 
   async function bulkRemove() {
+    const count = selectedIds.size;
     await bulkDeleteProducts({ productIds: Array.from(selectedIds) });
-    showToast({ type: "success", title: `${selectedIds.size} products deleted`, duration: 3000 });
     clearSelection();
-    await fetchProducts();
+    await fetchProducts({ silent: true });
+    showToast({ type: "success", title: `${count} products deleted`, duration: 3000 });
   }
 
   return {

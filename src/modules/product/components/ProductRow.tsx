@@ -89,9 +89,12 @@ export function ProductRow({
         <StatusBadge status={product.status} />
       </td>
 
-      <td className="px-4 py-3 text-slate-500 text-xs">
-        {new Date(product.createdAt).toLocaleDateString()}
-      </td>
+      {canEdit && (
+        <td className="px-4 py-3 text-slate-500 text-xs">
+          {new Date(product.createdAt).toLocaleDateString()}
+        </td>
+      )}
+      
       <td className="px-4 py-3 text-slate-500 text-xs">
         {new Date(product.updatedAt).toLocaleDateString()}
       </td>

@@ -1,6 +1,7 @@
-import { createContext, useState, type ReactNode } from "react";
+import { createContext, useState, useEffect, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
-import { setToken } from "../../../common/api/tokenStore";
+import { setTokens, registerAuthFailureHandler } from "../../../common/api/tokenStore";
 
 interface DecodedToken {
   sub: string;
@@ -11,36 +12,43 @@ interface AuthContextType {
   accessToken: string | null;
   role: string | null;
   username: string | null;
-  login: (token: string) => void;
+  login: (accessToken: string, refreshToken: string) => void;
   logout: () => void;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [accessToken, setAccessTokenState] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
+  const navigate = useNavigate();
 
-  function login(token: string) {
-    setAccessToken(token);
-    setToken(token);
+  function login(newAccessToken: string, newRefreshToken: string) {
+    setAccessTokenState(newAccessToken);
+    setTokens(newAccessToken, newRefreshToken);
 
-    // The role and username already live inside the JWT itself - we
-    // decode them here rather than making a separate API call, exactly
-    // matching how JwtAuthenticationProvider reads the "role" claim
-    // straight off the token on the backend.
-    const decoded = jwtDecode<DecodedToken>(token);
+    const decoded = jwtDecode<DecodedToken>(newAccessToken);
     setRole(decoded.role);
     setUsername(decoded.sub);
   }
 
   function logout() {
-    setAccessToken(null);
-    setToken(null);
+    setAccessTokenState(null);
+    setTokens(null, null);
     setRole(null);
     setUsername(null);
   }
+
+  // Registered once, on mount - this is how apiClient (which cannot use
+  // React hooks itself) tells the app "the refresh attempt failed too,
+  // the session is genuinely over" and gets redirected correctly.
+  useEffect(() => {
+    registerAuthFailureHandler(() => {
+      logout();
+      navigate("/login");
+    });
+  }, []);
 
   return (
     <AuthContext.Provider value={{ accessToken, role, username, login, logout }}>

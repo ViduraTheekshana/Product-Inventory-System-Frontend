@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect  } from "react";
 import { useAuth } from "../../auth/hooks/useAuth";
 import { useProducts } from "../hooks/useProducts";
 import { ProductRow } from "../components/ProductRow";
@@ -6,6 +6,7 @@ import { SelectedPanel } from "../components/SelectedPanel";
 import { CreateProductPanel } from "../components/CreateProductPanel";
 import { LoadingSpinner } from "../../../common/components/LoadingSpinner";
 import { ErrorBanner } from "../../../common/components/ErrorBanner";
+import { useDebouncedValue } from "../../../common/hooks/useDebouncedValue";
 
 export function ProductListPage() {
   const { role } = useAuth();
@@ -15,13 +16,20 @@ export function ProductListPage() {
   const {
     tab, setTab,
     products, page, setPage, totalPages, totalElements,
-    search, setSearch,
+    setSearch,
     sort, setSort,
     loading, error,
     selectedIds, toggleSelect, clearSelection,
     create, editPriceAndStock, changeStatus, remove,
     bulkChangeStatus, bulkEditPriceAndStock, bulkRemove,
   } = useProducts();
+
+  const [searchInput, setSearchInput] = useState("");
+  const debouncedSearch = useDebouncedValue(searchInput, 400);
+
+  useEffect(() => {
+    setSearch(debouncedSearch);
+  }, [debouncedSearch, setSearch]);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -34,6 +42,11 @@ export function ProductListPage() {
   const [sortField, sortDirection] = sort
     ? (sort.split(",") as [string, "asc" | "desc"])
     : [null, null];
+
+  let columnCount = 7; // #/ID, Name, SKU, Price, Stock, Status, Updated
+  if (canEdit && tab === "active") columnCount++; // checkbox
+  if (canEdit) columnCount++; // Created
+  if (tab === "active") columnCount++; // Actions
 
   function handleSortClick(field: string) {
     if (sortField === field) {
@@ -86,8 +99,8 @@ export function ProductListPage() {
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <div className="flex gap-2 flex-1 min-w-[260px]">
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search by name or SKU..."
               disabled={tab === "deleted"}
               className="flex-1 max-w-xs bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm disabled:opacity-40"
@@ -147,7 +160,7 @@ export function ProductListPage() {
               <tbody>
                 {products.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-center py-10 text-slate-500">
+                    <td colSpan={columnCount} className="text-center py-10 text-slate-500">
                       No products found.
                     </td>
                   </tr>
