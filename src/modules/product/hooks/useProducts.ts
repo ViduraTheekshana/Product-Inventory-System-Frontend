@@ -72,6 +72,13 @@ export function useProducts() {
     fetchProducts();
   }, [fetchProducts]);
 
+  // Whenever the search term or sort changes, jump back to page 0. Without
+  // this, staying on page 3 while switching to a search with only one
+  // page of results would silently show an empty page.
+  useEffect(() => {
+    setPage(0);
+  }, [search, sort]);
+
   function setTab(newTab: "active" | "deleted") {
     setTabState(newTab);
     setPage(0);

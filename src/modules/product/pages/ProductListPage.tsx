@@ -27,6 +27,29 @@ export function ProductListPage() {
 
   const selectedProducts = products.filter((p) => selectedIds.has(p.id));
 
+  // Only "price" and "createdAt" are valid sort fields on the backend
+  // (see ProductSortValidator) - parsing the current sort string here,
+  // once, lets both header cells check "am I the active sort column"
+  // without duplicating that logic twice.
+  const [sortField, sortDirection] = sort
+    ? (sort.split(",") as [string, "asc" | "desc"])
+    : [null, null];
+
+  function handleSortClick(field: string) {
+    if (sortField === field) {
+      // Same column clicked again: flip direction, then clear entirely
+      // on a third click - asc -> desc -> unsorted -> asc...
+      setSort(sortDirection === "asc" ? `${field},desc` : undefined);
+    } else {
+      setSort(`${field},asc`);
+    }
+  }
+
+  function sortIndicator(field: string) {
+    if (sortField !== field) return null;
+    return sortDirection === "asc" ? " ▲" : " ▼";
+  }
+
   function handleToggleStatus(id: number) {
     const product = products.find((p) => p.id === id);
     if (!product) return;
@@ -86,9 +109,7 @@ export function ProductListPage() {
           )}
         </div>
 
-        {error && (
-          <ErrorBanner title={error.title} detail={error.detail} />
-        )}
+        {error && <ErrorBanner title={error.title} detail={error.detail} />}
 
         {loading ? (
           <div className="flex justify-center py-16">
@@ -103,10 +124,22 @@ export function ProductListPage() {
                   <th className="px-4 py-3">{canEdit ? "ID" : "#"}</th>
                   <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3">SKU</th>
-                  <th className="px-4 py-3">Price</th>
+                  <th
+                    className="px-4 py-3 cursor-pointer select-none hover:text-slate-300"
+                    onClick={() => handleSortClick("price")}
+                  >
+                    Price{sortIndicator("price")}
+                  </th>
                   <th className="px-4 py-3">Stock</th>
                   <th className="px-4 py-3">Status</th>
-                  {canEdit && <th className="px-4 py-3">Created</th>}
+                  {canEdit && (
+                    <th
+                      className="px-4 py-3 cursor-pointer select-none hover:text-slate-300"
+                      onClick={() => handleSortClick("createdAt")}
+                    >
+                      Created{sortIndicator("createdAt")}
+                    </th>
+                  )}
                   <th className="px-4 py-3">Updated</th>
                   {tab === "active" && <th className="px-4 py-3 text-right">Actions</th>}
                 </tr>
@@ -175,11 +208,7 @@ export function ProductListPage() {
         )}
       </div>
 
-      <CreateProductPanel
-        isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
-        onCreate={create}
-      />
+      <CreateProductPanel isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} onCreate={create} />
     </div>
   );
 }
