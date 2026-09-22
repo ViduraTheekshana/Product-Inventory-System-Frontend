@@ -25,7 +25,7 @@ export function useLogin() {
 
     try {
       const response = await loginApi({ username, password });
-      login(response.accessToken);
+      login(response.accessToken, response.refreshToken);
       showToast({ type: "success", title: "Welcome back", message: `Signed in as ${username}`, duration: 4000 });
       navigate("/products");
     } catch (err) {

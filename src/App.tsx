@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import { LoginPage } from "./modules/auth";
+import { ProductListPage } from "./modules/product/pages/ProductListPage";
 import { ProtectedRoute } from "./common/routes/ProtectedRoute";
 
 function App() {
@@ -10,7 +11,7 @@ function App() {
         path="/products"
         element={
           <ProtectedRoute>
-            <div className="p-8 text-slate-100">Product page placeholder</div>
+            <ProductListPage />
           </ProtectedRoute>
         }
       />
