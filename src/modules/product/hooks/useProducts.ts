@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { getWithHeaders } from "../../../common/api/apiClient";
 import { useToast } from "../../../common/toast/useToast";
 import type { ApiError } from "../../../common/types/api.types";
@@ -35,11 +35,20 @@ export function useProducts() {
 
   const { showToast } = useToast();
 
+  // A "ref" is a box that holds a value which survives between renders,
+  // but - unlike useState - changing it does NOT cause a re-render.
+  // We use it here purely as a note-to-self: "the next time fetchProducts
+  // runs, skip the big loading spinner." We set this flag right before
+  // a search-driven update, and fetchProducts reads + clears it immediately.
+  const skipLoadingRef = useRef(false);
+
   // `silent` skips the loading spinner entirely - used specifically
   // after a mutation, where the table should update in place, not
   // flash to a full loading state for something the user just did.
   const fetchProducts = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) setLoading(true);
+    const silent = options?.silent || skipLoadingRef.current;
+    skipLoadingRef.current = false; // one-time use, then reset
+    if (!silent) setLoading(true);
     setError(null);
 
     try {
@@ -58,7 +67,7 @@ export function useProducts() {
     } catch (err) {
       setError(err as ApiError);
     } finally {
-      if (!options?.silent) setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [tab, page, sort, search, showToast]);
 
@@ -66,14 +75,30 @@ export function useProducts() {
     fetchProducts();
   }, [fetchProducts]);
 
+  // Sorting still resets to page 0 and still shows the loading spinner -
+  // clicking a column header is a deliberate action, so a brief loading
+  // state there is expected and fine. Search is handled separately below.
   useEffect(() => {
     setPage(0);
-  }, [search, sort]);
+  }, [sort]);
 
   function setTab(newTab: "active" | "deleted") {
     setTabState(newTab);
     setPage(0);
     setSelectedIds(new Set());
+  }
+
+  // This REPLACES the old pattern of "setSearch, then a separate effect
+  // resets the page." Doing both updates in this one function means
+  // React applies them together in a single render - so fetchProducts
+  // only becomes "new" once, not twice, which is what was causing the
+  // double-fetch you noticed. We also set skipLoadingRef here so the
+  // fetch that follows stays silent (no spinner flash) since the user
+  // is just typing, not performing an explicit navigation action.
+  function updateSearch(value: string) {
+    skipLoadingRef.current = true;
+    setSearch(value);
+    setPage(0);
   }
 
   function toggleSelect(id: number) {
@@ -142,7 +167,7 @@ export function useProducts() {
   return {
     tab, setTab,
     products, page, setPage, totalPages, totalElements,
-    search, setSearch,
+    search, setSearch: updateSearch,
     sort, setSort,
     loading, error,
     selectedIds, toggleSelect, clearSelection,
