@@ -31,23 +31,17 @@ export function useProducts() {
   const [sort, setSort] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
+
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedProductsMap, setSelectedProductsMap] = useState<Map<number, Product>>(new Map());
 
   const { showToast } = useToast();
 
-  // A "ref" is a box that holds a value which survives between renders,
-  // but - unlike useState - changing it does NOT cause a re-render.
-  // We use it here purely as a note-to-self: "the next time fetchProducts
-  // runs, skip the big loading spinner." We set this flag right before
-  // a search-driven update, and fetchProducts reads + clears it immediately.
   const skipLoadingRef = useRef(false);
 
-  // `silent` skips the loading spinner entirely - used specifically
-  // after a mutation, where the table should update in place, not
-  // flash to a full loading state for something the user just did.
   const fetchProducts = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent || skipLoadingRef.current;
-    skipLoadingRef.current = false; // one-time use, then reset
+    skipLoadingRef.current = false;
     if (!silent) setLoading(true);
     setError(null);
 
@@ -75,47 +69,77 @@ export function useProducts() {
     fetchProducts();
   }, [fetchProducts]);
 
-  // Sorting still resets to page 0 and still shows the loading spinner -
-  // clicking a column header is a deliberate action, so a brief loading
-  // state there is expected and fine. Search is handled separately below.
   useEffect(() => {
     setPage(0);
   }, [sort]);
 
-  function setTab(newTab: "active" | "deleted") {
+  // useCallback here matters for a DIFFERENT reason than fetchProducts
+  // above - setTab is never put in another effect's dependency array,
+  // so it wasn't causing bugs, but memoizing it too is good hygiene
+  // now that we're being careful about this pattern.
+  const setTab = useCallback((newTab: "active" | "deleted") => {
     setTabState(newTab);
     setPage(0);
     setSelectedIds(new Set());
-  }
+    setSelectedProductsMap(new Map());
+  }, []);
 
-  // This REPLACES the old pattern of "setSearch, then a separate effect
-  // resets the page." Doing both updates in this one function means
-  // React applies them together in a single render - so fetchProducts
-  // only becomes "new" once, not twice, which is what was causing the
-  // double-fetch you noticed. We also set skipLoadingRef here so the
-  // fetch that follows stays silent (no spinner flash) since the user
-  // is just typing, not performing an explicit navigation action.
-  function updateSearch(value: string) {
+  // THE ACTUAL FIX: wrapping this in useCallback with an empty
+  // dependency array gives it ONE stable identity for the component's
+  // whole lifetime - it only ever calls setSearch/setPage (React's own
+  // setters, always stable) and writes to a ref (also always the same
+  // object). Nothing it depends on ever changes, so it never needs a
+  // new identity. This is what stops ProductListPage's
+  // `useEffect(() => setSearch(debouncedSearch), [debouncedSearch, setSearch])`
+  // from firing on every unrelated re-render - previously, THIS
+  // function got a new identity every time fetchProducts completed,
+  // which made that effect think "setSearch changed" and re-run itself
+  // automatically, seconds after the real request, with no typing
+  // involved. That was the actual cause of your "milliseconds apart"
+  // duplicate fetch.
+  const updateSearch = useCallback((value: string) => {
     skipLoadingRef.current = true;
     setSearch(value);
     setPage(0);
-  }
+  }, []);
 
-  function toggleSelect(id: number) {
+  function toggleSelect(product: Product) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      next.has(product.id) ? next.delete(product.id) : next.add(product.id);
+      return next;
+    });
+    setSelectedProductsMap((prev) => {
+      const next = new Map(prev);
+      if (next.has(product.id)) {
+        next.delete(product.id);
+      } else {
+        next.set(product.id, product);
+      }
+      return next;
+    });
+  }
+
+  function removeFromSelection(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setSelectedProductsMap((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
       return next;
     });
   }
 
   function clearSelection() {
     setSelectedIds(new Set());
+    setSelectedProductsMap(new Map());
   }
 
-  // Every mutation below follows the same corrected order: perform the
-  // change, silently refresh the real data, THEN announce success -
-  // never claim success before the visible table actually agrees.
+  const selectedProducts = Array.from(selectedProductsMap.values());
+
   async function create(request: CreateProductRequest) {
     await createProduct(request);
     await fetchProducts({ silent: true });
@@ -125,18 +149,41 @@ export function useProducts() {
   async function editPriceAndStock(id: number, request: UpdateStockPriceRequest) {
     await updatePriceAndStock(id, request);
     await fetchProducts({ silent: true });
+
+    setSelectedProductsMap((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      const existing = next.get(id)!;
+      next.set(id, {
+        ...existing,
+        price: request.price ?? existing.price,
+        stockQuantity: request.stockQuantity ?? existing.stockQuantity,
+      });
+      return next;
+    });
+
     showToast({ type: "success", title: "Product updated", duration: 3000 });
   }
 
   async function changeStatus(id: number, status: ProductStatus) {
     await updateStatus(id, { status });
     await fetchProducts({ silent: true });
+
+    setSelectedProductsMap((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      const existing = next.get(id)!;
+      next.set(id, { ...existing, status });
+      return next;
+    });
+
     showToast({ type: "success", title: "Status updated", duration: 3000 });
   }
 
   async function remove(id: number) {
     await deleteProduct(id);
     await fetchProducts({ silent: true });
+    removeFromSelection(id);
     showToast({ type: "success", title: "Product deleted", duration: 3000 });
   }
 
@@ -170,7 +217,7 @@ export function useProducts() {
     search, setSearch: updateSearch,
     sort, setSort,
     loading, error,
-    selectedIds, toggleSelect, clearSelection,
+    selectedIds, selectedProducts, toggleSelect, removeFromSelection, clearSelection,
     create, editPriceAndStock, changeStatus, remove,
     bulkChangeStatus, bulkEditPriceAndStock, bulkRemove,
   };

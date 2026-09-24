@@ -10,3 +10,9 @@ export interface LoginResponse {
   refreshToken: string;
 }
 
+// Mirrors the backend's LogoutRequest record (see AuthService.logout):
+// the client sends back the refresh token it's holding, so the server
+// can look up its jti and mark that specific session revoked.
+export interface LogoutRequest {
+  refreshToken: string;
+}
