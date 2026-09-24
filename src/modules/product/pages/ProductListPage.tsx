@@ -1,4 +1,4 @@
-import { useState, useEffect  } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../auth/hooks/useAuth";
 import { useProducts } from "../hooks/useProducts";
 import { ProductRow } from "../components/ProductRow";
@@ -19,7 +19,10 @@ export function ProductListPage() {
     setSearch,
     sort, setSort,
     loading, error,
-    selectedIds, toggleSelect, clearSelection,
+    // selectedProducts now comes straight from the hook - it's the
+    // hook's own durable memory of what's selected, not something we
+    // derive here from `products` (that derivation was the bug).
+    selectedProducts, selectedIds, toggleSelect, removeFromSelection, clearSelection,
     create, editPriceAndStock, changeStatus, remove,
     bulkChangeStatus, bulkEditPriceAndStock, bulkRemove,
   } = useProducts();
@@ -31,27 +34,27 @@ export function ProductListPage() {
     setSearch(debouncedSearch);
   }, [debouncedSearch, setSearch]);
 
+  // Clearing the × button doesn't wait for the 400ms debounce - it
+  // updates both the visible input AND the real search value right
+  // away, so hitting clear feels instant rather than laggy.
+  function handleClearSearch() {
+    setSearchInput("");
+    setSearch("");
+  }
+
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  const selectedProducts = products.filter((p) => selectedIds.has(p.id));
-
-  // Only "price" and "createdAt" are valid sort fields on the backend
-  // (see ProductSortValidator) - parsing the current sort string here,
-  // once, lets both header cells check "am I the active sort column"
-  // without duplicating that logic twice.
   const [sortField, sortDirection] = sort
     ? (sort.split(",") as [string, "asc" | "desc"])
     : [null, null];
 
-  let columnCount = 7; // #/ID, Name, SKU, Price, Stock, Status, Updated
-  if (canEdit && tab === "active") columnCount++; // checkbox
-  if (canEdit) columnCount++; // Created
-  if (tab === "active") columnCount++; // Actions
+  let columnCount = 7;
+  if (canEdit && tab === "active") columnCount++;
+  if (canEdit) columnCount++;
+  if (tab === "active") columnCount++;
 
   function handleSortClick(field: string) {
     if (sortField === field) {
-      // Same column clicked again: flip direction, then clear entirely
-      // on a third click - asc -> desc -> unsorted -> asc...
       setSort(sortDirection === "asc" ? `${field},desc` : undefined);
     } else {
       setSort(`${field},asc`);
@@ -98,13 +101,33 @@ export function ProductListPage() {
 
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <div className="flex gap-2 flex-1 min-w-[260px]">
-            <input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search by name or SKU..."
-              disabled={tab === "deleted"}
-              className="flex-1 max-w-xs bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm disabled:opacity-40"
-            />
+            {/* `relative` on this wrapper is what lets the × button
+                below use `absolute` positioning to sit INSIDE the
+                input's right edge, rather than as a separate element
+                next to it. pr-8 on the input reserves that space so
+                typed text never runs underneath the button. */}
+            <div className="relative flex-1 max-w-xs">
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search by name or SKU..."
+                disabled={tab === "deleted"}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 pr-8 text-sm disabled:opacity-40"
+              />
+              {/* Only rendered at all once there's something to clear -
+                  this is a plain && short-circuit: if searchInput is an
+                  empty string (falsy), React renders nothing here. */}
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200 text-sm leading-none"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
 
           {tab === "active" && canEdit && (
@@ -154,7 +177,7 @@ export function ProductListPage() {
                     </th>
                   )}
                   <th className="px-4 py-3">Updated</th>
-                  {tab === "active" && <th className="px-4 py-3 text-right">Actions</th>}
+                  {tab === "active" && <th className="px-4 py-3 text-center">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -211,7 +234,7 @@ export function ProductListPage() {
         {tab === "active" && canEdit && (
           <SelectedPanel
             products={selectedProducts}
-            onRemoveFromSelection={toggleSelect}
+            onRemoveFromSelection={removeFromSelection}
             onClearAll={clearSelection}
             onSaveOne={(id, price, stockQuantity) => editPriceAndStock(id, { price, stockQuantity })}
             onBulkStatus={bulkChangeStatus}

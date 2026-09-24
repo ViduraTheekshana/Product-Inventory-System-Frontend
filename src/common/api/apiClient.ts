@@ -20,10 +20,6 @@ async function rawRequest(path: string, method: string, body?: unknown): Promise
   });
 }
 
-// If several requests happen to 401 at the same moment, they all share
-// ONE in-flight refresh call instead of each firing their own - avoids
-// a race where multiple simultaneous refreshes could each rotate the
-// token and invalidate each other.
 let refreshPromise: Promise<boolean> | null = null;
 
 async function tryRefreshAccessToken(): Promise<boolean> {
@@ -59,7 +55,6 @@ async function request<T>(path: string, method: string, body?: unknown): Promise
   if (response.status === 401) {
     const refreshed = await tryRefreshAccessToken();
     if (refreshed) {
-      // Retry the ORIGINAL request exactly once, now with a fresh token.
       response = await rawRequest(path, method, body);
     }
   }

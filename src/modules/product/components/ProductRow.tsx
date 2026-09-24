@@ -6,7 +6,7 @@ interface ProductRowProps {
   displayIndex: number;
   canEdit: boolean;
   isSelected: boolean;
-  onToggleSelect: (id: number) => void;
+  onToggleSelect: (product: Product) => void;
   onSavePriceAndStock: (id: number, price: number, stockQuantity: number) => void;
   onToggleStatus: (id: number) => void;
   onDelete: (id: number) => void;
@@ -29,9 +29,6 @@ export function ProductRow({
   const isLowStock = product.stockQuantity < 20;
 
   function startEdit() {
-    // Reset drafts to the product's CURRENT values every time editing
-    // starts - guards against showing stale numbers if this row was
-    // edited once already, cancelled, then reopened later.
     setDraftPrice(product.price.toString());
     setDraftStock(product.stockQuantity.toString());
     setIsEditing(true);
@@ -51,7 +48,11 @@ export function ProductRow({
           <input
             type="checkbox"
             checked={isSelected}
-            onChange={() => onToggleSelect(product.id)}
+            // Now passes the full product object, not just its id -
+            // this is what lets the hook remember what was selected,
+            // even after this row disappears from view (e.g. because
+            // of a search).
+            onChange={() => onToggleSelect(product)}
             className="accent-amber-500"
           />
         </td>
@@ -94,26 +95,32 @@ export function ProductRow({
           {new Date(product.createdAt).toLocaleDateString()}
         </td>
       )}
-      
+
       <td className="px-4 py-3 text-slate-500 text-xs">
         {new Date(product.updatedAt).toLocaleDateString()}
       </td>
 
+      {/* Everything below is centered now (was justify-end), and
+          wrapped in one consistent flex container regardless of which
+          branch renders - so "View only" and the icon groups all sit
+          on the same horizontal line across every row, whatever the role. */}
       <td className="px-4 py-3">
-        {!canEdit ? (
-          <span className="text-xs italic text-slate-500">View only</span>
-        ) : isEditing ? (
-          <div className="flex gap-1 justify-end">
-            <IconButton onClick={handleSave} color="success" title="Save">✓</IconButton>
-            <IconButton onClick={() => setIsEditing(false)} color="danger" title="Cancel">✕</IconButton>
-          </div>
-        ) : (
-          <div className="flex gap-1 justify-end">
-            <IconButton onClick={startEdit} color="info" title="Edit price/stock">✎</IconButton>
-            <IconButton onClick={() => onToggleStatus(product.id)} color="warning" title="Toggle status">⇄</IconButton>
-            <IconButton onClick={() => onDelete(product.id)} color="danger" title="Delete">✕</IconButton>
-          </div>
-        )}
+        <div className="flex justify-center">
+          {!canEdit ? (
+            <span className="text-xs italic text-slate-500">View only</span>
+          ) : isEditing ? (
+            <div className="flex gap-1">
+              <IconButton onClick={handleSave} color="success" title="Save">✓</IconButton>
+              <IconButton onClick={() => setIsEditing(false)} color="danger" title="Cancel">✕</IconButton>
+            </div>
+          ) : (
+            <div className="flex gap-1">
+              <IconButton onClick={startEdit} color="info" title="Edit price/stock">✎</IconButton>
+              <IconButton onClick={() => onToggleStatus(product.id)} color="warning" title="Toggle status">⇄</IconButton>
+              <IconButton onClick={() => onDelete(product.id)} color="danger" title="Delete">✕</IconButton>
+            </div>
+          )}
+        </div>
       </td>
     </tr>
   );

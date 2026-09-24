@@ -1,7 +1,8 @@
 import { createContext, useState, useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
-import { setTokens, registerAuthFailureHandler } from "../../../common/api/tokenStore";
+import { setTokens, getRefreshToken, registerAuthFailureHandler } from "../../../common/api/tokenStore";
+import { logout as logoutRequest } from "../api/authApi";
 
 interface DecodedToken {
   sub: string;
@@ -13,7 +14,7 @@ interface AuthContextType {
   role: string | null;
   username: string | null;
   login: (accessToken: string, refreshToken: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -33,16 +34,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUsername(decoded.sub);
   }
 
-  function logout() {
-    setAccessTokenState(null);
-    setTokens(null, null);
-    setRole(null);
-    setUsername(null);
+  async function logout() {
+    const refreshToken = getRefreshToken();
+
+    try {
+      // Only bother calling the backend if we actually have a refresh
+      // token to revoke. If we don't (already logged out somehow),
+      // there's nothing meaningful to tell the server.
+      if (refreshToken) {
+        await logoutRequest({ refreshToken });
+      }
+    } catch {
+      // Deliberately swallowed: this is "fail open" logout. Even if the
+      // network request fails (offline, server down, token already
+      // expired), the user still gets logged out on THIS device below.
+      // We don't want a network blip to trap someone in a session they
+      // clicked "log out" on. The backend-side session may briefly
+      // stay valid until it naturally expires, but that's an accepted
+      // trade-off for logout specifically - not for login.
+    } finally {
+      setAccessTokenState(null);
+      setTokens(null, null);
+      setRole(null);
+      setUsername(null);
+    }
   }
 
-  // Registered once, on mount - this is how apiClient (which cannot use
-  // React hooks itself) tells the app "the refresh attempt failed too,
-  // the session is genuinely over" and gets redirected correctly.
   useEffect(() => {
     registerAuthFailureHandler(() => {
       logout();
